@@ -1,0 +1,10 @@
+{
+  "name": "Bildschirmtastatur",
+  "short_name": "Tastatur",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#10141a",
+  "theme_color": "#10141a",
+  "lang": "de"
+}

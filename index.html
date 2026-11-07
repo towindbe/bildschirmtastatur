@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tastatur">
+<link rel="manifest" href="manifest.json">
+<title>Bildschirmtastatur</title>
+<style>
+  :root {
+    --bg:#10141a; --panel:#1b222c; --key:#2b3645; --key2:#3a4759; --fg:#f2f5f8;
+    --accent:#ffb400; --dwell:#2e9e5b; --size:1;
+  }
+  * { box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,system-ui,"Segoe UI",sans-serif; overflow:hidden; }
+  body { display:flex; flex-direction:column; padding:env(safe-area-inset-top) 10px 10px; gap:8px; }
+  button { font:inherit; color:inherit; border:0; cursor:pointer; touch-action:manipulation; }
+
+  #bar { display:flex; gap:8px; }
+  #bar button { flex:1; background:var(--panel); border-radius:12px; padding:12px 6px; font-size:20px; }
+  #bar button:active, #bar button.on { background:var(--accent); color:#000; }
+
+  #text { flex:1 1 auto; min-height:90px; background:#fff; color:#111; border-radius:14px;
+    padding:14px 18px; font-size:34px; line-height:1.3; white-space:pre-wrap; overflow-wrap:anywhere;
+    overflow-y:auto; -webkit-user-select:text; user-select:text; }
+  #caret { display:inline-block; width:3px; height:1.1em; background:#e53935; vertical-align:text-bottom;
+    margin:0 -1px; animation:blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity:0; } }
+
+  #sugg { display:flex; gap:8px; height:calc(60px * var(--size)); }
+  #sugg button { flex:1; background:var(--panel); border-radius:12px; font-size:calc(26px * var(--size)); overflow:hidden; }
+
+  #kb { display:flex; flex-direction:column; gap:8px; }
+  .row { display:flex; gap:8px; }
+  .key { position:relative; overflow:hidden; flex:1 1 0; height:calc(78px * var(--size));
+    background:var(--key); border-radius:12px; font-size:calc(32px * var(--size)); }
+  .key.fn { background:var(--key2); font-size:calc(26px * var(--size)); }
+  .key.w15 { flex-grow:1.5; } .key.w2 { flex-grow:2; } .key.w3 { flex-grow:3; } .key.w6 { flex-grow:6; }
+  .key.on { background:var(--accent); color:#000; }
+  .key:active { background:var(--accent); color:#000; }
+  .key::after { content:""; position:absolute; left:0; bottom:0; height:7px; width:0; background:var(--dwell); }
+  .key.dwelling::after { width:100%; transition:width var(--dwell-ms,1000ms) linear; }
+
+  #settings { position:fixed; inset:0; background:rgba(0,0,0,.75); display:none; align-items:center; justify-content:center; z-index:9; }
+  #settings.open { display:flex; }
+  #sbox { background:var(--panel); border-radius:18px; padding:24px; width:min(560px,92vw); display:flex; flex-direction:column; gap:18px; font-size:22px; }
+  #sbox label { display:flex; justify-content:space-between; align-items:center; gap:16px; }
+  #sbox input[type=range] { width:55%; height:40px; }
+  #sbox input[type=checkbox] { width:36px; height:36px; }
+  #sbox button { background:var(--accent); color:#000; border-radius:12px; padding:16px; font-size:24px; }
+  #toast { position:fixed; left:50%; top:20px; transform:translateX(-50%); background:#000c; padding:10px 22px;
+    border-radius:20px; font-size:22px; opacity:0; transition:opacity .25s; pointer-events:none; }
+  #toast.show { opacity:1; }
+</style>
+</head>
+<body>
+  <div id="bar">
+    <button id="bCopy">Kopieren</button>
+    <button id="bSpeak">Vorlesen</button>
+    <button id="bShare">Teilen</button>
+    <button id="bClear">Alles löschen</button>
+    <button id="bSet">Einstellungen</button>
+  </div>
+  <div id="text"></div>
+  <div id="sugg"></div>
+  <div id="kb"></div>
+
+  <div id="settings">
+    <div id="sbox">
+      <label>Verweilklick (Zeiger ruhen lassen)<input type="checkbox" id="sDwell"></label>
+      <label>Verweilzeit <span id="sDwellV"></span><input type="range" id="sMs" min="400" max="3000" step="100"></label>
+      <label>Tastengröße <input type="range" id="sSize" min="70" max="140" step="5"></label>
+      <label>Satzanfang automatisch groß<input type="checkbox" id="sAuto"></label>
+      <button id="sClose">Fertig</button>
+    </div>
+  </div>
+  <div id="toast"></div>
+
+<script>
+"use strict";
+/* ---------- Layouts ---------- */
+const L = {
+  letters: [
+    "q w e r t z u i o p ü".split(" "),
+    "a s d f g h j k l ö ä".split(" "),
+    ["SHIFT", ..."y x c v b n m".split(" "), ",", ".", "BACK"],
+    ["NUM", "SPACE", "ENTER", "LEFT", "RIGHT"]
+  ],
+  nums: [
+    "1 2 3 4 5 6 7 8 9 0 ß".split(" "),
+    "- / : ; ( ) € & @ \" +".split(" "),
+    ["ABC", ..."? ! ' % = # *".split(" "), "<", ">", "BACK"],
+    ["ABC", "SPACE", "ENTER", "LEFT", "RIGHT"]
+  ]
+};
+const LABEL = { SHIFT:"⇧", BACK:"⌫", ENTER:"↵", SPACE:"Leerzeichen", NUM:"123", ABC:"ABC", LEFT:"◀", RIGHT:"▶" };
+const CLS = { SHIFT:"fn w15", BACK:"fn w15", ENTER:"fn w2", SPACE:"w6", NUM:"fn w2", ABC:"fn w2", LEFT:"fn", RIGHT:"fn" };
+
+/* ---------- Zustand ---------- */
+let text = "", pos = 0, layer = "letters", shift = "once";
+const S = { dwell:true, ms:2500, size:100, auto:true };
+let learned = {};
+const store = {
+  get(k, d){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch(e){ return d; } },
+  set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} }
+};
+Object.assign(S, store.get("kb.settings", {}));
+learned = store.get("kb.learned", {});
+text = store.get("kb.text", ""); pos = text.length;
+
+const BASE = ("ich du er sie es wir ihr und oder aber nicht ja nein bitte danke hallo guten morgen tag abend nacht " +
+  "ist sind war waren bin bist habe hast hat haben hatte kann kannst können will willst wollen muss müssen " +
+  "möchte möchten brauche brauchst brauchen mir mich dir dich ihm ihn uns euch mein meine meinen dein " +
+  "das der die den dem des ein eine einen einem einer was wer wo wie wann warum wohin woher " +
+  "heute morgen gestern jetzt später gleich immer nie noch schon auch nur sehr viel wenig mehr gut schlecht " +
+  "essen trinken wasser kaffee tee brot hunger durst schlafen müde schmerzen hilfe hier dort da " +
+  "kommen komm gehen geh machen mach sagen sag sehen schau hören lesen schreiben anrufen telefon nachricht " +
+  "licht an aus auf zu offen fenster tür fernseher radio musik lauter leiser warm kalt " +
+  "familie freund freunde arzt zuhause arbeit zeit uhr tag woche monat jahr mit ohne für von zu bei nach aus " +
+  "über unter vor hinter neben zwischen gegen weil dass wenn dann also doch vielleicht genau richtig falsch " +
+  "morgen mittag abend freue freuen leid verstehe verstanden okay super schön danke bitte gerne gern").split(" ");
+
+const $ = id => document.getElementById(id);
+
+/* ---------- Text rendern ---------- */
+function renderText(){
+  const el = $("text");
+  el.textContent = "";
+  el.append(document.createTextNode(text.slice(0,pos)));
+  const c = document.createElement("span"); c.id = "caret"; el.append(c);
+  el.append(document.createTextNode(text.slice(pos)));
+  c.scrollIntoView({block:"nearest"});
+  store.set("kb.text", text);
+}
+
+/* ---------- Tastatur aufbauen ---------- */
+function labelFor(k){
+  if (LABEL[k]) return LABEL[k];
+  if (layer === "letters" && k.length === 1 && /\p{L}/u.test(k)) return shift === "off" ? k : k.toUpperCase();
+  return k;
+}
+let builtLayer = null;
+function buildKB(){
+  const kb = $("kb");
+  if (builtLayer === layer) {          // nur Beschriftung aktualisieren, Tasten bleiben bestehen
+    kb.querySelectorAll(".key").forEach(b => {
+      const k = b.dataset.key; b.textContent = labelFor(k);
+      if (k === "SHIFT") { b.classList.toggle("on", shift !== "off"); if (shift === "lock") b.textContent = "⇪"; }
+    });
+    return;
+  }
+  builtLayer = layer; kb.textContent = "";
+  for (const row of L[layer]) {
+    const r = document.createElement("div"); r.className = "row";
+    for (const k of row) {
+      const b = document.createElement("button");
+      b.className = "key " + (CLS[k] || ""); b.dataset.key = k; b.textContent = labelFor(k);
+      if (k === "SHIFT" && shift !== "off") { b.classList.add("on"); if (shift === "lock") b.textContent = "⇪"; }
+      r.append(b);
+    }
+    kb.append(r);
+  }
+}
+
+/* ---------- Eingabe ---------- */
+function insert(s){
+  text = text.slice(0,pos) + s + text.slice(pos); pos += s.length;
+}
+function afterInsert(s){
+  if (shift === "once") shift = "off";
+  if (S.auto && /[.!?]\s$|\n$/.test(text.slice(0,pos)) ) shift = "once";
+}
+function press(k){
+  if (k === "SHIFT") { shift = shift === "off" ? "once" : shift === "once" ? "lock" : "off"; }
+  else if (k === "NUM") layer = "nums";
+  else if (k === "ABC") layer = "letters";
+  else if (k === "BACK") { if (pos > 0) { text = text.slice(0,pos-1) + text.slice(pos); pos--; } }
+  else if (k === "LEFT") pos = Math.max(0, pos-1);
+  else if (k === "RIGHT") pos = Math.min(text.length, pos+1);
+  else if (k === "SPACE") { learnLast(); insert(" "); afterInsert(); }
+  else if (k === "ENTER") { learnLast(); insert("\n"); afterInsert(); }
+  else {
+    const ch = (layer === "letters" && shift !== "off") ? k.toUpperCase() : k;
+    insert(ch); afterInsert();
+  }
+  if (S.auto && text.slice(0,pos) === "" && shift === "off") shift = "once";
+  renderText(); buildKB(); renderSugg();
+}
+
+/* ---------- Wortvorschläge ---------- */
+function prefix(){ const m = text.slice(0,pos).match(/[\p{L}ß]+$/u); return m ? m[0] : ""; }
+function learnLast(){
+  const m = text.slice(0,pos).match(/([\p{L}ß]{3,})$/u);
+  if (m) { const w = m[1].toLowerCase(); learned[w] = (learned[w]||0) + 1; store.set("kb.learned", learned); }
+}
+function suggestions(){
+  const p = prefix().toLowerCase(); const out = [];
+  const cand = new Map();
+  for (const w of BASE) cand.set(w, (cand.get(w)||0) + 1);
+  for (const [w,n] of Object.entries(learned)) cand.set(w, (cand.get(w)||0) + 5*n);
+  const list = [...cand.entries()].filter(([w]) => !p ? false : w.startsWith(p) && w !== p)
+    .sort((a,b) => b[1]-a[1] || a[0].length-b[0].length).slice(0,5).map(x=>x[0]);
+  if (!p) {
+    return [...Object.entries(learned)].sort((a,b)=>b[1]-a[1]).slice(0,5).map(x=>x[0]);
+  }
+  return list;
+}
+function renderSugg(){
+  const box = $("sugg"); box.textContent = "";
+  const p = prefix();
+  for (const w of suggestions().slice(0,5)) {
+    const b = document.createElement("button"); b.className = "key"; b.style.flex = "1 1 0";
+    b.dataset.sugg = w;
+    const cap = (p && p[0] !== p[0].toLowerCase()) || shift !== "off";
+    b.textContent = cap ? w[0].toUpperCase() + w.slice(1) : w;
+    box.append(b);
+  }
+}
+function acceptSugg(w){
+  const p = prefix();
+  const cap = (p && p[0] !== p[0].toLowerCase()) || (!p && shift !== "off");
+  const word = cap ? w[0].toUpperCase() + w.slice(1) : w;
+  text = text.slice(0,pos-p.length) + word + " " + text.slice(pos); pos = pos - p.length + word.length + 1;
+  learned[w.toLowerCase()] = (learned[w.toLowerCase()]||0) + 1; store.set("kb.learned", learned);
+  if (shift === "once") shift = "off";
+  renderText(); buildKB(); renderSugg();
+}
+
+/* ---------- Verweilklick + Klick ---------- */
+let dwellTimer = null, dwellEl = null;
+function cancelDwell(){ clearTimeout(dwellTimer); dwellTimer = null; if (dwellEl) dwellEl.classList.remove("dwelling"); dwellEl = null; }
+function activate(el){
+  if (el.dataset.key) press(el.dataset.key);
+  else if (el.dataset.sugg) acceptSugg(el.dataset.sugg);
+}
+function startDwell(el){
+  cancelDwell(); dwellEl = el;
+  el.style.setProperty("--dwell-ms", S.ms + "ms");
+  void el.offsetWidth;
+  el.classList.add("dwelling");
+  dwellTimer = setTimeout(() => {
+    const e = dwellEl; cancelDwell(); activate(e);
+  }, S.ms);
+}
+document.addEventListener("pointerover", e => {
+  if (!S.dwell || e.pointerType === "touch") return;
+  const k = e.target.closest(".key"); if (!k || !$("kb").contains(k) && !$("sugg").contains(k)) return;
+  startDwell(k);
+});
+document.addEventListener("pointerout", e => {
+  const k = e.target.closest(".key"); if (k && k === dwellEl && !k.contains(e.relatedTarget)) cancelDwell();
+});
+// Klick (Joystick-Taste oder Touch)
+document.addEventListener("click", e => {
+  const k = e.target.closest(".key"); if (!k) return;
+  cancelDwell(); activate(k);
+});
+
+/* ---------- Werkzeugleiste ---------- */
+function toast(m){ const t = $("toast"); t.textContent = m; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"), 1500); }
+$("bCopy").onclick = async () => {
+  try { await navigator.clipboard.writeText(text); toast("Kopiert"); }
+  catch(e) {
+    const r = document.createRange(); r.selectNodeContents($("text")); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    try { document.execCommand("copy"); toast("Kopiert"); } catch(_) { toast("Kopieren nicht möglich"); }
+  }
+};
+$("bSpeak").onclick = () => {
+  if (!("speechSynthesis" in window)) return toast("Vorlesen nicht verfügbar");
+  speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text || " "); u.lang = "de-DE"; speechSynthesis.speak(u);
+};
+$("bShare").onclick = async () => {
+  if (navigator.share) { try { await navigator.share({text}); } catch(e){} } else toast("Teilen nicht verfügbar");
+};
+$("bClear").onclick = () => { if (!text) return; text = ""; pos = 0; shift = "once"; renderText(); buildKB(); renderSugg(); };
+
+/* ---------- Einstellungen ---------- */
+function applySettings(){
+  document.documentElement.style.setProperty("--size", S.size/100);
+  $("sDwell").checked = S.dwell; $("sMs").value = S.ms; $("sSize").value = S.size; $("sAuto").checked = S.auto;
+  $("sDwellV").textContent = (S.ms/1000).toFixed(1) + " s";
+  store.set("kb.settings", S);
+}
+$("bSet").onclick = () => $("settings").classList.add("open");
+$("sClose").onclick = () => $("settings").classList.remove("open");
+$("sDwell").onchange = e => { S.dwell = e.target.checked; applySettings(); };
+$("sMs").oninput = e => { S.ms = +e.target.value; applySettings(); };
+$("sSize").oninput = e => { S.size = +e.target.value; applySettings(); };
+$("sAuto").onchange = e => { S.auto = e.target.checked; applySettings(); };
+
+/* ---------- Start ---------- */
+if (S.auto && !text) shift = "once"; else shift = "off";
+applySettings(); renderText(); buildKB(); renderSugg();
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>
