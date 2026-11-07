@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Tastatur">
 <link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
 <title>Bildschirmtastatur</title>
 <style>
   :root {
@@ -15,6 +16,8 @@
     --accent:#ffb400; --dwell:#2e9e5b; --size:1;
   }
   * { box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+  html { -webkit-tap-highlight-color:transparent; -webkit-text-size-adjust:100%; }
+  body { overscroll-behavior:none; touch-action:manipulation; }
   html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
     font-family:-apple-system,system-ui,"Segoe UI",sans-serif; overflow:hidden; }
   body { display:flex; flex-direction:column; padding:env(safe-area-inset-top) 10px 10px; gap:8px; }
@@ -75,6 +78,7 @@
       <label>Verweilzeit <span id="sDwellV"></span><input type="range" id="sMs" min="400" max="3000" step="100"></label>
       <label>Tastengröße <input type="range" id="sSize" min="70" max="140" step="5"></label>
       <label>Satzanfang automatisch groß<input type="checkbox" id="sAuto"></label>
+      <label>Wiederholen beim Ruhen (Doppelbuchstaben)<input type="checkbox" id="sRep"></label>
       <button id="sClose">Fertig</button>
     </div>
   </div>
@@ -102,7 +106,7 @@ const CLS = { SHIFT:"fn w15", BACK:"fn w15", ENTER:"fn w2", SPACE:"w6", NUM:"fn 
 
 /* ---------- Zustand ---------- */
 let text = "", pos = 0, layer = "letters", shift = "once";
-const S = { dwell:true, ms:2500, size:100, auto:true };
+const S = { dwell:true, ms:2500, size:100, auto:true, repeat:true };
 let learned = {};
 const store = {
   get(k, d){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch(e){ return d; } },
@@ -244,6 +248,8 @@ function startDwell(el){
   el.classList.add("dwelling");
   dwellTimer = setTimeout(() => {
     const e = dwellEl; cancelDwell(); activate(e);
+    // Ruhen bleiben = Taste erneut nach einer weiteren Verweilzeit (für Doppelbuchstaben)
+    if (S.repeat && e.isConnected && e.dataset.key && !/^(SHIFT|NUM|ABC)$/.test(e.dataset.key) && e.matches(":hover")) startDwell(e);
   }, S.ms);
 }
 document.addEventListener("pointerover", e => {
@@ -281,7 +287,7 @@ $("bClear").onclick = () => { if (!text) return; text = ""; pos = 0; shift = "on
 /* ---------- Einstellungen ---------- */
 function applySettings(){
   document.documentElement.style.setProperty("--size", S.size/100);
-  $("sDwell").checked = S.dwell; $("sMs").value = S.ms; $("sSize").value = S.size; $("sAuto").checked = S.auto;
+  $("sDwell").checked = S.dwell; $("sMs").value = S.ms; $("sSize").value = S.size; $("sAuto").checked = S.auto; $("sRep").checked = S.repeat;
   $("sDwellV").textContent = (S.ms/1000).toFixed(1) + " s";
   store.set("kb.settings", S);
 }
@@ -291,6 +297,7 @@ $("sDwell").onchange = e => { S.dwell = e.target.checked; applySettings(); };
 $("sMs").oninput = e => { S.ms = +e.target.value; applySettings(); };
 $("sSize").oninput = e => { S.size = +e.target.value; applySettings(); };
 $("sAuto").onchange = e => { S.auto = e.target.checked; applySettings(); };
+$("sRep").onchange = e => { S.repeat = e.target.checked; applySettings(); };
 
 /* ---------- Start ---------- */
 if (S.auto && !text) shift = "once"; else shift = "off";

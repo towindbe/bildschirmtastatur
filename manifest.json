@@ -6,5 +6,6 @@
   "orientation": "landscape",
   "background_color": "#10141a",
   "theme_color": "#10141a",
-  "lang": "de"
+  "lang": "de",
+  "icons": [{ "src": "icon-180.png", "sizes": "180x180", "type": "image/png" }]
 }

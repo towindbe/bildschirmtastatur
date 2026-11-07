@@ -1,6 +1,6 @@
-const C = "kb-v1";
+const C = "kb-v2";
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(C).then(c => c.addAll(["./", "./index.html", "./manifest.json"])));
+  e.waitUntil(caches.open(C).then(c => c.addAll(["./", "./index.html", "./manifest.json", "./icon-180.png"])));
   self.skipWaiting();
 });
 self.addEventListener("activate", e => e.waitUntil(
